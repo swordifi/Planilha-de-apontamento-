@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Apontamento de Paradas - Chão de Fábrica</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        industrial: {
+                            950: '#090d16',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(59, 130, 246, 0.8); }
+            50% { border-color: rgba(59, 130, 246, 0.25); }
+        }
+        .current-hour-highlight { animation: pulse-border 2s infinite; }
+        @keyframes slide-up {
+            from { transform: translateY(100%); opacity: 0.6; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .animate-slide-up { animation: slide-up 0.22s ease-out; }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-industrial-950 text-slate-900 dark:text-slate-100 font-sans antialiased min-h-screen pb-24 transition-colors duration-200">
+
+    <!-- CABEÇALHO FIXO -->
+    <header class="sticky top-0 z-30 bg-industrial-900 text-white shadow-lg border-b border-slate-800">
+        <div class="max-w-3xl mx-auto px-3 pt-2.5 pb-2">
+            <div class="flex items-center justify-between gap-2 bg-industrial-950/90 border border-slate-800 rounded-xl p-2.5 shadow-inner">
+                <div class="flex items-center gap-2.5">
+                    <div class="bg-blue-600/20 border border-blue-500/40 p-2 rounded-lg text-blue-400">
+                        <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline gap-1.5">
+                            <span id="digital-clock" class="font-mono text-2xl sm:text-3xl font-extrabold tracking-wider text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.35)]">00:00:00</span>
+                            <span id="active-shift-badge" class="text-[10px] sm:text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white tracking-wide">Turno 06h-00h</span>
+                        </div>
+                        <div id="digital-date" class="text-[11px] sm:text-xs text-slate-400 font-medium capitalize">Carregando data...</div>
+                    </div>
+                </div>
+                <div class="flex flex-col items-end gap-1.5">
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="toggleDarkMode()" title="Alternar Tema" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 active:scale-95 transition">
+                            <i id="theme-icon" data-lucide="moon" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="openExportModal()" title="Exportar Relatório" class="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow active:scale-95 transition">
+                            <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+                            <span class="hidden sm:inline">Exportar</span>
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-1 bg-slate-800/90 border border-slate-700 rounded-lg px-2 py-1">
+                        <i data-lucide="calendar" class="w-3 h-3 text-slate-400"></i>
+                        <input type="date" id="report-date" class="bg-transparent text-[11px] font-semibold text-slate-200 focus:outline-none cursor-pointer">
+                    </div>
+                </div>
+            </div>
+            <nav aria-label="Máquinas" class="mt-2.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1" id="machine-tabs"></nav>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-3 pt-3 space-y-3">
+        <section id="summary-panel" class="bg-white dark:bg-industrial-900 rounded-2xl p-3.5 shadow-sm border border-slate-200 dark:border-slate-800"></section>
+
+        <section class="flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-industrial-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center gap-1 w-full sm:w-auto overflow-x-auto no-scrollbar" id="shift-filters">
+                <button onclick="setShiftFilter('ALL')" data-filter="ALL" class="filter-btn flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap">Todos (23h)</button>
+                <button onclick="setShiftFilter('DAY')" data-filter="DAY" class="filter-btn flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap">06:00 às 00:00</button>
+                <button onclick="setShiftFilter('NIGHT')" data-filter="NIGHT" class="filter-btn flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap">00:00 às 05:00</button>
+            </div>
+            <div class="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800">
+                <button onclick="scrollToCurrentHour()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-bold active:scale-95 transition">
+                    <i data-lucide="locate-fixed" class="w-3.5 h-3.5"></i>
+                    <span>Hora Atual</span>
+                </button>
+                <button onclick="openConfirmClearModal()" class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 text-xs font-bold active:scale-95 transition">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    <span>Limpar Dia</span>
+                </button>
+            </div>
+        </section>
+
+        <section id="spreadsheet-container" class="space-y-4"></section>
+    </main>
+
+    <div class="fixed bottom-0 inset-x-0 z-20 bg-white/95 dark:bg-industrial-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 px-3 py-2.5 shadow-[0_-4px_15px_rgba(0,0,0,0.08)]">
+        <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
+            <button onclick="quickLogCurrentHour()" class="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold py-3 px-4 rounded-xl shadow-md text-sm transition active:scale-[0.99]">
+                <i data-lucide="alert-octagon" class="w-5 h-5"></i>
+                <span>Apontar Parada Agora (<span id="btn-now-hour">--:--</span>)</span>
+            </button>
+            <button onclick="openExportModal()" class="flex items-center justify-center gap-1.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-xl shadow text-sm transition active:scale-95">
+                <i data-lucide="file-spreadsheet" class="w-5 h-5 text-emerald-400"></i>
+                <span class="hidden sm:inline">Relatório</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL DE EDIÇÃO -->
+    <div id="edit-modal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white dark:bg-industrial-900 w-full max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 max-h-[92vh] flex flex-col overflow-hidden animate-slide-up">
+            <div class="px-4 py-3.5 bg-slate-50 dark:bg-industrial-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                    <span id="modal-machine-badge" class="text-[11px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">Empacotadora</span>
+                    <h2 id="modal-slot-title" class="text-lg font-extrabold text-slate-900 dark:text-white mt-0.5">Faixa: 06:00 - 07:00</h2>
+                </div>
+                <button onclick="closeEditModal()" class="p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-4 overflow-y-auto space-y-4 flex-1">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Status Geral neste Horário</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button" onclick="selectSlotStatus('RUNNING')" id="status-btn-RUNNING" class="status-choice flex flex-col items-center justify-center p-2.5 rounded-xl border-2 font-bold text-xs gap-1 transition">
+                            <i data-lucide="check-circle-2" class="w-5 h-5"></i><span>Rodando</span>
+                        </button>
+                        <button type="button" onclick="selectSlotStatus('STOPPED')" id="status-btn-STOPPED" class="status-choice flex flex-col items-center justify-center p-2.5 rounded-xl border-2 font-bold text-xs gap-1 transition">
+                            <i data-lucide="octagon-alert" class="w-5 h-5"></i><span>Parada</span>
+                        </button>
+                        <button type="button" onclick="selectSlotStatus('MAINTENANCE')" id="status-btn-MAINTENANCE" class="status-choice flex flex-col items-center justify-center p-2.5 rounded-xl border-2 font-bold text-xs gap-1 transition">
+                            <i data-lucide="wrench" class="w-5 h-5"></i><span>Manutenção</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="stops-list-section" class="space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Ocorrências / Paradas (<span id="modal-stops-count">0</span>)</label>
+                        <button type="button" onclick="addNewStopForm()" class="flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 active:scale-95">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>Adicionar Parada</span>
+                        </button>
+                    </div>
+                    <div id="modal-stops-container" class="space-y-3"></div>
+                </div>
+
+                <div>
+                    <label for="modal-general-note" class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Anotação Geral do Horário (Opcional)</label>
+                    <textarea id="modal-general-note" rows="2" placeholder="Ex: Operação normal, velocidade reduzida, troca de turno..." oninput="autoSaveEditingContext()" class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-industrial-950 px-3 py-2 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+                </div>
+            </div>
+
+            <div class="p-3.5 bg-slate-50 dark:bg-industrial-950 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                <button type="button" onclick="closeEditModal()" class="w-1/3 py-3 rounded-xl font-bold text-sm bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Cancelar</button>
+                <button type="button" onclick="saveSlotChanges()" class="w-2/3 py-3 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-500 text-white shadow-lg flex items-center justify-center gap-2">
+                    <i data-lucide="save" class="w-4 h-4"></i><span>Salvar Apontamento</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EXPORTAÇÃO -->
+    <div id="export-modal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white dark:bg-industrial-900 w-full max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="px-4 py-3.5 bg-slate-50 dark:bg-industrial-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="file-text" class="w-5 h-5 text-emerald-500"></i>
+                    <h2 class="text-base font-extrabold">Exportar Relatório de Paradas</h2>
+                </div>
+                <button onclick="closeExportModal()" class="p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-3 overflow-y-auto flex-1">
+                <p class="text-xs text-slate-600 dark:text-slate-400">Pré-visualização do resumo formatado para envio rápido via WhatsApp/E-mail ou download da planilha CSV (Excel):</p>
+                <textarea id="export-preview-text" readonly rows="10" class="w-full font-mono text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-industrial-950 p-3 text-slate-800 dark:text-slate-200 focus:outline-none"></textarea>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <button onclick="copyWhatsAppReport()" class="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow">
+                        <i data-lucide="copy" class="w-4 h-4"></i><span>Copiar p/ WhatsApp</span>
+                    </button>
+                    <button onclick="downloadCSVReport()" class="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow">
+                        <i data-lucide="download" class="w-4 h-4"></i><span>Baixar Planilha (.CSV)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIRMAÇÃO LIMPAR DIA -->
+    <div id="confirm-clear-modal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-industrial-900 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+            <div class="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+                <div class="p-2.5 rounded-full bg-rose-100 dark:bg-rose-950">
+                    <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+                </div>
+                <h3 class="text-lg font-extrabold text-slate-900 dark:text-white">Limpar Apontamentos?</h3>
+            </div>
+            <p class="text-sm text-slate-600 dark:text-slate-300">Deseja apagar todas as anotações da data selecionada (<strong id="clear-date-label"></strong>)? Esta ação não pode ser desfeita.</p>
+            <div class="flex items-center gap-2 pt-2">
+                <button onclick="closeConfirmClearModal()" class="flex-1 py-2.5 rounded-xl font-bold text-sm bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Cancelar</button>
+                <button onclick="confirmClearDay()" class="flex-1 py-2.5 rounded-xl font-bold text-sm bg-rose-600 hover:bg-rose-500 text-white shadow">Sim, Limpar Tudo</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed top-24 left-1/2 -translate-x-1/2 z-50 hidden bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2.5 rounded-full shadow-xl text-xs font-bold flex items-center gap-2 border border-slate-700 dark:border-slate-200 transition-all">
+        <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 dark:text-emerald-600"></i>
+        <span id="toast-message">Salvo com sucesso!</span>
+    </div>
+
+    <script>
+        /* ============================================================
+           CONFIGURAÇÕES
+        ============================================================ */
+        const MACHINES = [
+            { id: 'empacotadora', name: 'Empacotadora', short: 'Empacot.', icon: 'package' },
+            { id: 'paletizadora', name: 'Paletizadora', short: 'Paletiz.', icon: 'layers' },
+            { id: 'enchedora', name: 'Enchedora', short: 'Enchedora', icon: 'droplets' },
+            { id: 'despaletizadora', name: 'Despaletizadora', short: 'Despalet.', icon: 'arrow-up-from-line' },
+            { id: 'wormer', name: 'Wormer', short: 'Wormer', icon: 'flame' },
+            { id: 'geral', name: 'Visão Geral', short: 'Geral', icon: 'layout-grid' }
+        ];
+
+        const STOP_REASONS = [
+            'Mecânica',
+            'Elétrica',
+            'Falta de Insumo / Embalagem',
+            'Setup / Troca de Produto',
+            'Limpeza / CIP',
+            'Operacional / Ajuste',
+            'Falta de Energia / Utilidades',
+            'Outros'
+        ];
+
+        const TIME_SLOTS = [
+            { id: '06-07', startHour: 6, label: '06:00 - 07:00', shift: 'DAY' },
+            { id: '07-08', startHour: 7, label: '07:00 - 08:00', shift: 'DAY' },
+            { id: '08-09', startHour: 8, label: '08:00 - 09:00', shift: 'DAY' },
+            { id: '09-10', startHour: 9, label: '09:00 - 10:00', shift: 'DAY' },
+            { id: '10-11', startHour: 10, label: '10:00 - 11:00', shift: 'DAY' },
+            { id: '11-12', startHour: 11, label: '11:00 - 12:00', shift: 'DAY' },
+            { id: '12-13', startHour: 12, label: '12:00 - 13:00', shift: 'DAY' },
+            { id: '13-14', startHour: 13, label: '13:00 - 14:00', shift: 'DAY' },
+            { id: '14-15', startHour: 14, label: '14:00 - 15:00', shift: 'DAY' },
+            { id: '15-16', startHour: 15, label: '15:00 - 16:00', shift: 'DAY' },
+            { id: '16-17', startHour: 16, label: '16:00 - 17:00', shift: 'DAY' },
+            { id: '17-18', startHour: 17, label: '17:00 - 18:00', shift: 'DAY' },
+            { id: '18-19', startHour: 18, label: '18:00 - 19:00', shift: 'DAY' },
+            { id: '19-20', startHour: 19, label: '19:00 - 20:00', shift: 'DAY' },
+            { id: '20-21', startHour: 20, label: '20:00 - 21:00', shift: 'DAY' },
+            { id: '21-22', startHour: 21, label: '21:00 - 22:00', shift: 'DAY' },
+            { id: '22-23', startHour: 22, label: '22:00 - 23:00', shift: 'DAY' },
+            { id: '23-00', startHour: 23, label: '23:00 - 00:00', shift: 'DAY' },
+            { id: '00-01', startHour: 0, label: '00:00 - 01:00', shift: 'NIGHT' },
+            { id: '01-02', startHour: 1, label: '01:00 - 02:00', shift: 'NIGHT' },
+            { id: '02-03', startHour: 2, label: '02:00 - 03:00', shift: 'NIGHT' },
+            { id: '03-04', startHour: 3, label: '03:00 - 04:00', shift: 'NIGHT' },
+            { id: '04-05', startHour: 4, label: '04:00 - 05:00', shift: 'NIGHT' }
+        ];
+
+        const STORAGE_KEY_PREFIX = 'fabrica_paradas_v1_';
+
+        let state = {
+            selectedMachine: 'empacotadora',
+            shiftFilter: 'ALL',
+            selectedDate: getTodayISO(),
+            currentHour: new Date().getHours(),
+            data: {},
+            editingContext: null
+        };
+
+        /* ============================================================
+           INICIALIZAÇÃO
+        ============================================================ */
+        window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            const dateInput = document.getElementById('report-date');
+            dateInput.value = state.selectedDate;
+            dateInput.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    state.selectedDate = e.target.value;
+                    loadDateData();
+                    renderAll();
+                }
+            });
+            loadDateData();
+            startDigitalClock();
+            renderAll();
+        });
+
+        function getTodayISO() {
+            const now = new Date();
+            const offset = now.getTimezoneOffset();
+            const local = new Date(now.getTime() - (offset * 60 * 1000));
+            return local.toISOString().split('T')[0];
+        }
+
+        /* ============================================================
+           TEMA
+        ============================================================ */
+        function initTheme() {
+            const savedTheme = localStorage.getItem('fabrica_theme');
+            if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+            updateThemeIcon();
+        }
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('fabrica_theme', isDark ? 'dark' : 'light');
+            updateThemeIcon();
+        }
+        function updateThemeIcon() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const iconEl = document.getElementById('theme-icon');
+            if (iconEl) {
+                iconEl.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+                lucide.createIcons();
+            }
+        }
+
+        /* ============================================================
+           RELÓGIO E AUTOSAVE AO VIVO
+        ============================================================ */
+        function startDigitalClock() {
+            function updateClock() {
+                const now = new Date();
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+
+                document.getElementById('digital-clock').textContent = `${hours}:${minutes}:${seconds}`;
+                const dateOptions = { weekday: 'short', day: '2-digit', month: 'long', year: 'numeric' };
+                document.getElementById('digital-date').textContent = now.toLocaleDateString('pt-BR', dateOptions);
+
+                const currentH = now.getHours();
+                const shiftBadge = document.getElementById('active-shift-badge');
+                const btnNowHour = document.getElementById('btn-now-hour');
+
+                if (currentH >= 6 && currentH <= 23) {
+                    shiftBadge.textContent = 'Turno 06:00 - 00:00';
+                    shiftBadge.className = 'text-[10px] sm:text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white tracking-wide';
+                } else if (currentH >= 0 && currentH < 5) {
+                    shiftBadge.textContent = 'Madrugada 00:00 - 05:00';
+                    shiftBadge.className = 'text-[10px] sm:text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-purple-600 text-white tracking-wide';
+                } else {
+                    shiftBadge.textContent = 'Intervalo 05:00 - 06:00';
+                    shiftBadge.className = 'text-[10px] sm:text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-amber-600 text-white tracking-wide';
+                }
+
+                const nextH = String((currentH + 1) % 24).padStart(2, '0');
+                btnNowHour.textContent = `${hours}:00-${nextH}:00`;
+
+                if (state.currentHour !== currentH) {
+                    state.currentHour = currentH;
+                    renderSpreadsheet();
+                }
+
+                // Atualização ao vivo das paradas em andamento no modal
+                if (state.editingContext) {
+                    state.editingContext.stops.forEach((stop, idx) => {
+                        if (!stop.endTime && stop.startTime) {
+                            const minInput = document.getElementById(`stop-min-${idx}`);
+                            if (minInput) {
+                                const live = calcMinutesBetween(stop.startTime, getNowHHMM());
+                                if (Number(minInput.value) !== live) minInput.value = live;
+                            }
+                            const btnFinish = document.getElementById(`btn-finish-${idx}`);
+                            if (btnFinish) {
+                                const live = calcMinutesBetween(stop.startTime, getNowHHMM());
+                                btnFinish.innerHTML = `<i data-lucide="check-check" class="w-4 h-4"></i> Finalizar agora (${getNowHHMM()}) — ${live} min`;
+                            }
+                        }
+                    });
+                }
+            }
+            updateClock();
+            setInterval(updateClock, 1000);
+        }
+
+        /* ============================================================
+           PERSISTÊNCIA
+        ============================================================ */
+        function loadDateData() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY_PREFIX + state.selectedDate);
+                state.data = raw ? JSON.parse(raw) : {};
+            } catch (e) {
+                console.error('Erro ao carregar dados:', e);
+                state.data = {};
+            }
+        }
+        function saveDateData() {
+            try {
+                localStorage.setItem(STORAGE_KEY_PREFIX + state.selectedDate, JSON.stringify(state.data));
+            } catch (e) {
+                console.error('Erro ao salvar:', e);
+                showToast('Erro ao salvar no navegador!');
+            }
+        }
+        function getSlotData(machineId, slotId) {
+            if (!state.data[machineId]) state.data[machineId] = {};
+            if (!state.data[machineId][slotId]) {
+                return { status: 'RUNNING', generalNote: '', stops: [] };
+            }
+            return state.data[machineId][slotId];
+        }
+
+        /* ============================================================
+           UTILITÁRIOS DE TEMPO
+        ============================================================ */
+        function getNowHHMM() {
+            const now = new Date();
+            return `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        }
+
+        function calcMinutesBetween(startHHMM, endHHMM) {
+            if (!startHHMM || !endHHMM) return 0;
+            const [sh, sm] = startHHMM.split(':').map(Number);
+            const [eh, em] = endHHMM.split(':').map(Number);
+            if ([sh,sm,eh,em].some(isNaN)) return 0;
+            let startTotal = sh * 60 + sm;
+            let endTotal = eh * 60 + em;
+            if (endTotal < startTotal) endTotal += 24 * 60;
+            return Math.max(0, endTotal - startTotal);
+        }
+
+        function autoSaveEditingContext() {
+            if (!state.editingContext) return;
+            const { machineId, slotId, status, stops } = state.editingContext;
+            const generalNote = document.getElementById('modal-general-note')?.value.trim() || '';
+            if (!state.data[machineId]) state.data[machineId] = {};
+            state.data[machineId][slotId] = { status, generalNote, stops };
+            saveDateData();
+        }
+
+        /* ============================================================
+           CÁLCULOS
+        ============================================================ */
+        function calculateMachineStats(machineId) {
+            let dayMinutes = 0, nightMinutes = 0, stopCount = 0, maintenanceSlots = 0;
+            const nowHHMM = getNowHHMM();
+
+            TIME_SLOTS.forEach(slot => {
+                const record = getSlotData(machineId, slot.id);
+                let slotMinutes = 0;
+
+                record.stops.forEach(s => {
+                    if (!s.endTime && s.startTime) {
+                        // parada em aberto → conta até agora
+                        slotMinutes += calcMinutesBetween(s.startTime, nowHHMM);
+                    } else {
+                        slotMinutes += Number(s.minutes) || 0;
+                    }
+                });
+
+                if (record.stops.length > 0) {
+                    stopCount += record.stops.length;
+                } else if (record.status === 'STOPPED' || record.status === 'MAINTENANCE') {
+                    stopCount += 1;
+                }
+
+                if (record.status === 'MAINTENANCE') maintenanceSlots++;
+
+                if (slot.shift === 'DAY') dayMinutes += slotMinutes;
+                else nightMinutes += slotMinutes;
+            });
+
+            return { dayMinutes, nightMinutes, totalMinutes: dayMinutes + nightMinutes, stopCount, maintenanceSlots };
+        }
+
+        function formatMinutesToHours(totalMin) {
+            if (!totalMin || totalMin <= 0) return '0 min';
+            const h = Math.floor(totalMin / 60);
+            const m = totalMin % 60;
+            if (h === 0) return `${m} min`;
+            if (m === 0) return `${h}h`;
+            return `${h}h ${String(m).padStart(2, '0')}m`;
+        }
+
+        /* ============================================================
+           RENDERIZAÇÃO
+        ============================================================ */
+        function renderAll() {
+            renderMachineTabs();
+            renderFilterButtons();
+            renderSummaryPanel();
+            renderSpreadsheet();
+            lucide.createIcons();
+        }
+
+        function renderMachineTabs() {
+            const container = document.getElementById('machine-tabs');
+            container.innerHTML = MACHINES.map(m => {
+                const isActive = state.selectedMachine === m.id;
+                const stats = m.id !== 'geral' ? calculateMachineStats(m.id) : null;
+                const hasStops = stats && stats.totalMinutes > 0;
+                return `
+                    <button onclick="selectMachine('${m.id}')"
+                        class="relative flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition shrink-0 border
+                        ${isActive ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-950/50' : 'bg-slate-800/80 text-slate-300 border-slate-700/80 hover:bg-slate-800 hover:text-white'}">
+                        <i data-lucide="${m.icon}" class="w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}"></i>
+                        <span>${m.name}</span>
+                        ${hasStops ? `<span class="ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-mono ${isActive ? 'bg-white text-blue-700' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'}">${stats.totalMinutes}m</span>` : ''}
+                    </button>`;
+            }).join('');
+        }
+
+        function renderFilterButtons() {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                const filter = btn.getAttribute('data-filter');
+                if (filter === state.shiftFilter) {
+                    btn.className = 'filter-btn flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap bg-slate-900 dark:bg-blue-600 text-white shadow-xs';
+                } else {
+                    btn.className = 'filter-btn flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700';
+                }
+            });
+        }
+
+        function renderSummaryPanel() {
+            const panel = document.getElementById('summary-panel');
+            if (state.selectedMachine === 'geral') {
+                let grandTotalMin = 0, grandStops = 0;
+                MACHINES.filter(m => m.id !== 'geral').forEach(m => {
+                    const s = calculateMachineStats(m.id);
+                    grandTotalMin += s.totalMinutes;
+                    grandStops += s.stopCount;
+                });
+                panel.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400"><i data-lucide="bar-chart-3" class="w-4 h-4"></i></span>
+                            <h1 class="font-extrabold text-sm sm:text-base">Resumo Geral da Linha (5 Máquinas)</h1>
+                        </div>
+                        <span class="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">${formatDateBR(state.selectedDate)}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div class="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/70 rounded-xl p-2.5">
+                            <span class="text-[11px] font-bold uppercase text-rose-700 dark:text-rose-400 block">Tempo Total Parado</span>
+                            <span class="font-mono text-lg sm:text-xl font-extrabold text-rose-600 dark:text-rose-300">${formatMinutesToHours(grandTotalMin)}</span>
+                        </div>
+                        <div class="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/70 rounded-xl p-2.5">
+                            <span class="text-[11px] font-bold uppercase text-amber-700 dark:text-amber-400 block">Total de Paradas</span>
+                            <span class="font-mono text-lg sm:text-xl font-extrabold text-amber-600 dark:text-amber-300">${grandStops} ocorrências</span>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            const machine = MACHINES.find(m => m.id === state.selectedMachine);
+            const stats = calculateMachineStats(machine.id);
+
+            panel.innerHTML = `
+                <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="p-1.5 rounded-lg bg-blue-600 text-white"><i data-lucide="${machine.icon}" class="w-4 h-4"></i></span>
+                        <div>
+                            <h1 class="font-extrabold text-base sm:text-lg leading-tight">${machine.name}</h1>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400">Planilha de Controle de Paradas</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[10px] font-bold uppercase text-slate-400 block">Total Geral</span>
+                        <span class="font-mono text-base sm:text-lg font-extrabold ${stats.totalMinutes > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}">${formatMinutesToHours(stats.totalMinutes)}</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-slate-800 rounded-xl p-2 text-center">
+                        <span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 block">06:00 - 00:00</span>
+                        <span class="font-mono text-sm font-extrabold text-slate-800 dark:text-slate-100">${formatMinutesToHours(stats.dayMinutes)}</span>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-slate-800 rounded-xl p-2 text-center">
+                        <span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 block">00:00 - 05:00</span>
+                        <span class="font-mono text-sm font-extrabold text-slate-800 dark:text-slate-100">${formatMinutesToHours(stats.nightMinutes)}</span>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-slate-800 rounded-xl p-2 text-center">
+                        <span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 block">Ocorrências</span>
+                        <span class="font-mono text-sm font-extrabold ${stats.stopCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-300'}">${stats.stopCount}</span>
+                    </div>
+                </div>`;
+        }
+
+        function renderSpreadsheet() {
+            const container = document.getElementById('spreadsheet-container');
+            if (state.selectedMachine === 'geral') {
+                renderOverviewView(container);
+                return;
+            }
+            const showDay = state.shiftFilter === 'ALL' || state.shiftFilter === 'DAY';
+            const showNight = state.shiftFilter === 'ALL' || state.shiftFilter === 'NIGHT';
+            let html = '';
+            if (showDay) {
+                const daySlots = TIME_SLOTS.filter(s => s.shift === 'DAY');
+                html += renderShiftBlock('Turno 06:00 até 00:00', 'sun', 'blue', daySlots);
+            }
+            if (showNight) {
+                const nightSlots = TIME_SLOTS.filter(s => s.shift === 'NIGHT');
+                html += renderShiftBlock('Turno Madrugada 00:00 até 05:00', 'moon', 'purple', nightSlots);
+            }
+            container.innerHTML = html;
+        }
+
+        function renderShiftBlock(title, iconName, colorTheme, slots) {
+            const badgeColors = colorTheme === 'blue' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white';
+            const nowHHMM = getNowHHMM();
+
+            const rowsHtml = slots.map(slot => {
+                const record = getSlotData(state.selectedMachine, slot.id);
+                const isCurrentHour = (state.selectedDate === getTodayISO()) && (slot.startHour === state.currentHour);
+
+                let totalSlotMin = 0;
+                record.stops.forEach(s => {
+                    if (!s.endTime && s.startTime) totalSlotMin += calcMinutesBetween(s.startTime, nowHHMM);
+                    else totalSlotMin += Number(s.minutes) || 0;
+                });
+
+                const hasOpenStop = record.stops.some(s => !s.endTime && s.startTime);
+
+                let statusConfig = {
+                    label: 'Rodando',
+                    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+                    rowBg: 'bg-white dark:bg-industrial-900',
+                    icon: 'check-circle-2'
+                };
+
+                if (hasOpenStop) {
+                    statusConfig = {
+                        label: `EM ANDAMENTO (${totalSlotMin}m)`,
+                        badgeClass: 'bg-rose-600 text-white border-rose-700 animate-pulse',
+                        rowBg: 'bg-rose-50/60 dark:bg-rose-950/25',
+                        icon: 'octagon-alert'
+                    };
+                } else if (record.status === 'STOPPED' || totalSlotMin > 0) {
+                    statusConfig = {
+                        label: totalSlotMin > 0 ? `Parada (${totalSlotMin}m)` : 'Parada',
+                        badgeClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/90 dark:text-rose-300 border-rose-300 dark:border-rose-800',
+                        rowBg: 'bg-rose-50/40 dark:bg-rose-950/15',
+                        icon: 'octagon-alert'
+                    };
+                } else if (record.status === 'MAINTENANCE') {
+                    statusConfig = {
+                        label: totalSlotMin > 0 ? `Manut. (${totalSlotMin}m)` : 'Manutenção',
+                        badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/90 dark:text-amber-300 border-amber-300 dark:border-amber-800',
+                        rowBg: 'bg-amber-50/40 dark:bg-amber-950/15',
+                        icon: 'wrench'
+                    };
+                }
+
+                let detailsHtml = '';
+                if (record.stops.length > 0) {
+                    detailsHtml = record.stops.map(stop => {
+                        const emAndamento = !stop.endTime && stop.startTime;
+                        const liveMin = emAndamento ? calcMinutesBetween(stop.startTime, nowHHMM) : (stop.minutes || 0);
+                        return `
+                            <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs bg-white/90 dark:bg-industrial-950/90 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                <span class="font-mono font-bold ${emAndamento ? 'text-rose-600 dark:text-rose-400 animate-pulse' : 'text-rose-600 dark:text-rose-400'}">
+                                    ${stop.startTime}${stop.endTime ? '-' + stop.endTime : ' → agora'} (${liveMin} min)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 font-semibold text-[11px] text-slate-800 dark:text-slate-200">${escapeHTML(stop.reason)}</span>
+                                ${emAndamento ? '<span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] font-bold">EM ANDAMENTO</span>' : ''}
+                                ${stop.note ? `<span class="text-slate-600 dark:text-slate-400 italic w-full sm:w-auto">— ${escapeHTML(stop.note)}</span>` : ''}
+                            </div>`;
+                    }).join('');
+                }
+                if (record.generalNote) {
+                    detailsHtml += `
+                        <div class="mt-1.5 text-xs text-slate-600 dark:text-slate-300 flex items-start gap-1">
+                            <i data-lucide="message-square" class="w-3.5 h-3.5 mt-0.5 text-slate-400 shrink-0"></i>
+                            <span>${escapeHTML(record.generalNote)}</span>
+                        </div>`;
+                }
+
+                return `
+                    <div id="slot-row-${slot.id}" onclick="openEditModal('${state.selectedMachine}', '${slot.id}')"
+                        class="${statusConfig.rowBg} p-3 transition active:bg-slate-100 dark:active:bg-slate-800 cursor-pointer select-none
+                        ${isCurrentHour ? 'border-l-4 border-l-blue-500 ring-2 ring-blue-500/40 current-hour-highlight' : ''}">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <span class="font-mono text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">${slot.label}</span>
+                                ${isCurrentHour ? '<span class="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-600 text-white">Agora</span>' : ''}
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${statusConfig.badgeClass}">
+                                    <i data-lucide="${statusConfig.icon}" class="w-3.5 h-3.5"></i>
+                                    <span>${statusConfig.label}</span>
+                                </span>
+                                <span class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                                    <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                </span>
+                            </div>
+                        </div>
+                        ${detailsHtml ? `<div class="mt-1">${detailsHtml}</div>` : `
+                            <div class="mt-1 text-[11px] text-slate-400 dark:text-slate-500 flex items-center justify-between">
+                                <span>Toque para apontar parada ou observação</span>
+                            </div>`}
+                    </div>`;
+            }).join('');
+
+            return `
+                <div class="bg-white dark:bg-industrial-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <div class="px-3.5 py-2.5 bg-slate-100 dark:bg-industrial-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="p-1.5 rounded-lg ${badgeColors}"><i data-lucide="${iconName}" class="w-4 h-4"></i></span>
+                            <h2 class="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-slate-800 dark:text-slate-100">${title}</h2>
+                        </div>
+                        <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400">${slots.length} faixas</span>
+                    </div>
+                    <div class="hidden sm:flex items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-500">
+                        <span>Horário / Ocorrências</span><span>Status / Ação</span>
+                    </div>
+                    <div class="divide-y divide-slate-200 dark:divide-slate-800">${rowsHtml}</div>
+                </div>`;
+        }
+
+        function renderOverviewView(container) {
+            const machineCards = MACHINES.filter(m => m.id !== 'geral').map(m => {
+                const stats = calculateMachineStats(m.id);
+                const recentStops = [];
+                TIME_SLOTS.forEach(slot => {
+                    const rec = getSlotData(m.id, slot.id);
+                    rec.stops.forEach(st => recentStops.push({ slotLabel: slot.label, ...st }));
+                });
+                return `
+                    <div onclick="selectMachine('${m.id}')" class="bg-white dark:bg-industrial-900 rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 cursor-pointer hover:border-blue-500 transition active:scale-[0.99]">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="p-2 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"><i data-lucide="${m.icon}" class="w-5 h-5"></i></div>
+                                <div>
+                                    <h3 class="font-extrabold text-base text-slate-900 dark:text-white">${m.name}</h3>
+                                    <span class="text-xs text-slate-500">${stats.stopCount} parada(s) registrada(s)</span>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <span class="font-mono text-base font-extrabold ${stats.totalMinutes > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}">${formatMinutesToHours(stats.totalMinutes)}</span>
+                                <span class="block text-[10px] text-blue-600 dark:text-blue-400 font-bold">Abrir Planilha →</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs mb-2">
+                            <div class="bg-slate-50 dark:bg-industrial-950 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 flex justify-between">
+                                <span class="text-slate-500">06h-00h:</span><span class="font-mono font-bold">${formatMinutesToHours(stats.dayMinutes)}</span>
+                            </div>
+                            <div class="bg-slate-50 dark:bg-industrial-950 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 flex justify-between">
+                                <span class="text-slate-500">00h-05h:</span><span class="font-mono font-bold">${formatMinutesToHours(stats.nightMinutes)}</span>
+                            </div>
+                        </div>
+                        ${recentStops.length > 0 ? `
+                            <div class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                                ${recentStops.slice(-2).map(st => `
+                                    <div class="text-xs flex items-center justify-between text-slate-600 dark:text-slate-300">
+                                        <span class="truncate"><strong>${st.slotLabel}</strong> • ${escapeHTML(st.reason)}</span>
+                                        <span class="font-mono font-bold text-rose-600 dark:text-rose-400 ml-2 shrink-0">${st.minutes}m</span>
+                                    </div>`).join('')}
+                            </div>` : `<p class="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">✓ Sem paradas apontadas até o momento.</p>`}
+                    </div>`;
+            }).join('');
+            container.innerHTML = `<div class="space-y-3">${machineCards}</div>`;
+        }
+
+        /* ============================================================
+           NAVEGAÇÃO
+        ============================================================ */
+        function selectMachine(machineId) { state.selectedMachine = machineId; renderAll(); }
+        function setShiftFilter(filter) {
+            state.shiftFilter = filter;
+            renderFilterButtons();
+            renderSpreadsheet();
+            lucide.createIcons();
+        }
+        function scrollToCurrentHour() {
+            if (state.selectedMachine === 'geral') { state.selectedMachine = 'empacotadora'; renderAll(); }
+            const currentSlot = TIME_SLOTS.find(s => s.startHour === state.currentHour);
+            if (!currentSlot) { showToast('Horário atual (05:00-06:00) fora dos turnos!'); return; }
+            if (state.shiftFilter !== 'ALL' && state.shiftFilter !== currentSlot.shift) {
+                state.shiftFilter = 'ALL';
+                renderFilterButtons();
+                renderSpreadsheet();
+                lucide.createIcons();
+            }
+            const el = document.getElementById(`slot-row-${currentSlot.id}`);
+            if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); showToast(`Destacando faixa ${currentSlot.label}`); }
+        }
+        function quickLogCurrentHour() {
+            const targetMachine = state.selectedMachine === 'geral' ? 'empacotadora' : state.selectedMachine;
+            const currentSlot = TIME_SLOTS.find(s => s.startHour === state.currentHour) || TIME_SLOTS[0];
+            openEditModal(targetMachine, currentSlot.id, true);
+        }
+
+        /* ============================================================
+           MODAL DE EDIÇÃO
+        ============================================================ */
+        function openEditModal(machineId, slotId, autoAddStop = false) {
+            const machine = MACHINES.find(m => m.id === machineId);
+            const slot = TIME_SLOTS.find(s => s.id === slotId);
+            const existing = getSlotData(machineId, slotId);
+
+            state.editingContext = {
+                machineId, slotId, slotStartHour: slot.startHour,
+                status: existing.status,
+                stops: JSON.parse(JSON.stringify(existing.stops || []))
+            };
+
+            document.getElementById('modal-machine-badge').textContent = machine.name;
+            document.getElementById('modal-slot-title').textContent = `Horário: ${slot.label}`;
+            document.getElementById('modal-general-note').value = existing.generalNote || '';
+
+            if (autoAddStop && state.editingContext.stops.length === 0) {
+                state.editingContext.status = 'STOPPED';
+                addNewStopForm(false);
+            }
+
+            updateModalStatusUI();
+            renderModalStops();
+            document.getElementById('edit-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeEditModal() {
+            // Garante salvamento ao fechar
+            autoSaveEditingContext();
+            document.getElementById('edit-modal').classList.add('hidden');
+            state.editingContext = null;
+            renderAll();
+        }
+
+        function selectSlotStatus(newStatus) {
+            if (!state.editingContext) return;
+            state.editingContext.status = newStatus;
+            if ((newStatus === 'STOPPED' || newStatus === 'MAINTENANCE') && state.editingContext.stops.length === 0) {
+                addNewStopForm(false);
+            }
+            updateModalStatusUI();
+            renderModalStops();
+            autoSaveEditingContext();
+            lucide.createIcons();
+        }
+
+        function updateModalStatusUI() {
+            const current = state.editingContext.status;
+            const styles = {
+                RUNNING: 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300',
+                STOPPED: 'border-rose-500 bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300',
+                MAINTENANCE: 'border-amber-500 bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300'
+            };
+            const inactive = 'border-slate-200 dark:border-slate-700 bg-white dark:bg-industrial-950 text-slate-500 dark:text-slate-400';
+            ['RUNNING', 'STOPPED', 'MAINTENANCE'].forEach(st => {
+                const btn = document.getElementById(`status-btn-${st}`);
+                btn.className = `status-choice flex flex-col items-center justify-center p-2.5 rounded-xl border-2 font-bold text-xs gap-1 transition ${current === st ? styles[st] : inactive}`;
+            });
+        }
+
+        function addNewStopForm(shouldRender = true) {
+            if (!state.editingContext) return;
+            state.editingContext.stops.push({
+                id: Date.now() + Math.random(),
+                startTime: getNowHHMM(),
+                endTime: '',
+                minutes: 0,
+                reason: STOP_REASONS[0],
+                note: ''
+            });
+            if (state.editingContext.status === 'RUNNING') {
+                state.editingContext.status = 'STOPPED';
+                updateModalStatusUI();
+            }
+            autoSaveEditingContext();
+            if (shouldRender) { renderModalStops(); lucide.createIcons(); }
+        }
+
+        function removeStopForm(index) {
+            if (!state.editingContext) return;
+            state.editingContext.stops.splice(index, 1);
+            if (state.editingContext.stops.length === 0 && state.editingContext.status === 'STOPPED') {
+                state.editingContext.status = 'RUNNING';
+                updateModalStatusUI();
+            }
+            autoSaveEditingContext();
+            renderModalStops();
+            lucide.createIcons();
+        }
+
+        function updateStopField(index, field, value) {
+            if (!state.editingContext || !state.editingContext.stops[index]) return;
+            const stop = state.editingContext.stops[index];
+            stop[field] = value;
+
+            if ((field === 'startTime' || field === 'endTime') && stop.startTime && stop.endTime) {
+                const diff = calcMinutesBetween(stop.startTime, stop.endTime);
+                if (diff > 0) {
+                    stop.minutes = diff;
+                    const minInput = document.getElementById(`stop-min-${index}`);
+                    if (minInput) minInput.value = diff;
+                }
+            }
+            autoSaveEditingContext();
+        }
+
+        function finishStopNow(index) {
+            if (!state.editingContext || !state.editingContext.stops[index]) return;
+            const stop = state.editingContext.stops[index];
+            stop.endTime = getNowHHMM();
+            stop.minutes = calcMinutesBetween(stop.startTime, stop.endTime);
+            autoSaveEditingContext();
+            renderModalStops();
+            lucide.createIcons();
+            showToast(`Parada finalizada às ${stop.endTime} (${stop.minutes} min)`);
+        }
+
+        function renderModalStops() {
+            const container = document.getElementById('modal-stops-container');
+            const stops = state.editingContext.stops;
+            document.getElementById('modal-stops-count').textContent = stops.length;
+
+            if (stops.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400">
+                        Nenhuma parada registrada nesta faixa horária.<br>
+                        Clique em <strong>"+ Adicionar Parada"</strong> se a máquina parou.
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = stops.map((stop, idx) => {
+                const emAndamento = !stop.endTime && stop.startTime;
+                const minutosAoVivo = emAndamento ? calcMinutesBetween(stop.startTime, getNowHHMM()) : (stop.minutes || 0);
+
+                return `
+                <div class="p-3 rounded-xl bg-slate-50 dark:bg-industrial-950 border ${emAndamento ? 'border-rose-400 dark:border-rose-600 ring-2 ring-rose-500/30' : 'border-slate-200 dark:border-slate-800'} space-y-2.5 relative">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-extrabold text-rose-600 dark:text-rose-400 uppercase flex items-center gap-1.5">
+                            Parada #${idx + 1}
+                            ${emAndamento ? '<span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] animate-pulse">EM ANDAMENTO</span>' : ''}
+                        </span>
+                        <button type="button" onclick="removeStopForm(${idx})" class="text-xs text-slate-400 hover:text-rose-500 flex items-center gap-1 px-1.5 py-0.5 rounded">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i><span>Remover</span>
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Início</label>
+                            <input type="time" value="${stop.startTime || ''}" onchange="updateStopField(${idx}, 'startTime', this.value)"
+                                class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-industrial-900 px-2 py-1.5 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Fim</label>
+                            <input type="time" value="${stop.endTime || ''}" onchange="updateStopField(${idx}, 'endTime', this.value)"
+                                class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-industrial-900 px-2 py-1.5 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Minutos *</label>
+                            <input id="stop-min-${idx}" type="number" min="1" max="60" value="${minutosAoVivo || ''}" oninput="updateStopField(${idx}, 'minutes', Number(this.value))"
+                                class="w-full rounded-lg border border-rose-300 dark:border-rose-800 bg-white dark:bg-industrial-900 px-2 py-1.5 text-xs font-mono font-extrabold text-rose-600 dark:text-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-500">
+                        </div>
+                    </div>
+
+                    ${emAndamento ? `
+                    <button type="button" id="btn-finish-${idx}" onclick="finishStopNow(${idx})"
+                        class="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold active:scale-[0.99]">
+                        <i data-lucide="check-check" class="w-4 h-4"></i>
+                        Finalizar agora (${getNowHHMM()}) — ${minutosAoVivo} min
+                    </button>` : ''}
+
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Motivo da Parada</label>
+                        <select onchange="updateStopField(${idx}, 'reason', this.value)"
+                            class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-industrial-900 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            ${STOP_REASONS.map(r => `<option value="${r}" ${stop.reason === r ? 'selected' : ''}>${r}</option>`).join('')}
+                        </select>
+                    </div>
+
+                    <div>
+                        <input type="text" placeholder="Detalhe rápido (ex: travamento de filme, sensor sujo...)" value="${escapeHTML(stop.note || '')}"
+                            oninput="updateStopField(${idx}, 'note', this.value)"
+                            class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-industrial-900 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function saveSlotChanges() {
+            if (!state.editingContext) return;
+            const { machineId, slotId, status, stops } = state.editingContext;
+            const generalNote = document.getElementById('modal-general-note').value.trim();
+
+            stops.forEach(st => {
+                if (st.startTime && st.endTime) {
+                    const diff = calcMinutesBetween(st.startTime, st.endTime);
+                    if (diff > 0) st.minutes = diff;
+                }
+            });
+
+            if (!state.data[machineId]) state.data[machineId] = {};
+            state.data[machineId][slotId] = { status, generalNote, stops };
+
+            saveDateData();
+            closeEditModal();
+            renderAll();
+            showToast('Apontamento salvo!');
+        }
+
+        /* ============================================================
+           EXPORTAÇÃO
+        ============================================================ */
+        function openExportModal() {
+            document.getElementById('export-preview-text').value = generateWhatsAppSummary();
+            document.getElementById('export-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+        function closeExportModal() {
+            document.getElementById('export-modal').classList.add('hidden');
+        }
+        function generateWhatsAppSummary() {
+            const lines = [];
+            lines.push(`*RELATÓRIO DE PARADAS DE MÁQUINAS*`);
+            lines.push(`Data: ${formatDateBR(state.selectedDate)}`);
+            lines.push(`--------------------------------`);
+            const nowHHMM = getNowHHMM();
+
+            MACHINES.filter(m => m.id !== 'geral').forEach(m => {
+                const stats = calculateMachineStats(m.id);
+                lines.push(`\n*${m.name.toUpperCase()}*`);
+                lines.push(`• Total Parado: ${formatMinutesToHours(stats.totalMinutes)} (${stats.stopCount} ocorrências)`);
+                lines.push(`• Turno 06h-00h: ${formatMinutesToHours(stats.dayMinutes)} | Madrugada 00h-05h: ${formatMinutesToHours(stats.nightMinutes)}`);
+
+                TIME_SLOTS.forEach(slot => {
+                    const rec = getSlotData(m.id, slot.id);
+                    if (rec.stops.length > 0 || rec.status !== 'RUNNING' || rec.generalNote) {
+                        if (rec.stops.length > 0) {
+                            rec.stops.forEach(st => {
+                                const emAndamento = !st.endTime && st.startTime;
+                                const minutos = emAndamento ? calcMinutesBetween(st.startTime, nowHHMM) : (st.minutes || 0);
+                                const timeRange = st.startTime ? ` (${st.startTime}${st.endTime ? '-' + st.endTime : ' → agora'})` : '';
+                                const obs = st.note ? ` - ${st.note}` : '';
+                                const flag = emAndamento ? ' ⏳ EM ANDAMENTO' : '';
+                                lines.push(`  - [${slot.label}] ${minutos}min${timeRange}: ${st.reason}${obs}${flag}`);
+                            });
+                        } else {
+                            const stLabel = rec.status === 'MAINTENANCE' ? 'Manutenção' : (rec.status === 'STOPPED' ? 'Parada' : 'Obs');
+                            lines.push(`  - [${slot.label}] ${stLabel}${rec.generalNote ? ': ' + rec.generalNote : ''}`);
+                        }
+                    }
+                });
+            });
+            return lines.join('\n');
+        }
+
+        function copyWhatsAppReport() {
+            const textarea = document.getElementById('export-preview-text');
+            textarea.select();
+            textarea.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            showToast('Relatório copiado para colar no WhatsApp!');
+        }
+
+        function downloadCSVReport() {
+            const nowHHMM = getNowHHMM();
+            const rows = [
+                ['Data', 'Turno', 'Faixa Horaria', 'Maquina', 'Status', 'Inicio Parada', 'Fim Parada', 'Minutos Parados', 'Motivo', 'Observacoes', 'Em Andamento']
+            ];
+
+            MACHINES.filter(m => m.id !== 'geral').forEach(m => {
+                TIME_SLOTS.forEach(slot => {
+                    const rec = getSlotData(m.id, slot.id);
+                    const turnoLabel = slot.shift === 'DAY' ? '06:00-00:00' : '00:00-05:00';
+
+                    if (rec.stops.length > 0) {
+                        rec.stops.forEach(st => {
+                            const emAndamento = !st.endTime && st.startTime;
+                            const minutos = emAndamento ? calcMinutesBetween(st.startTime, nowHHMM) : (st.minutes || 0);
+                            rows.push([
+                                state.selectedDate, turnoLabel, slot.label, m.name, rec.status,
+                                st.startTime || '', st.endTime || '', minutos,
+                                st.reason || '', (st.note || rec.generalNote || '').replace(/;/g, ','),
+                                emAndamento ? 'SIM' : 'NAO'
+                            ]);
+                        });
+                    } else if (rec.status !== 'RUNNING' || rec.generalNote) {
+                        rows.push([
+                            state.selectedDate, turnoLabel, slot.label, m.name, rec.status,
+                            '', '', 0, '', (rec.generalNote || '').replace(/;/g, ','), 'NAO'
+                        ]);
+                    }
+                });
+            });
+
+            const csvContent = '\uFEFF' + rows.map(r => r.map(v => `"${v}"`).join(';')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `paradas_maquinas_${state.selectedDate}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Arquivo CSV baixado!');
+        }
+
+        /* ============================================================
+           LIMPAR DIA
+        ============================================================ */
+        function openConfirmClearModal() {
+            document.getElementById('clear-date-label').textContent = formatDateBR(state.selectedDate);
+            document.getElementById('confirm-clear-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+        function closeConfirmClearModal() {
+            document.getElementById('confirm-clear-modal').classList.add('hidden');
+        }
+        function confirmClearDay() {
+            state.data = {};
+            saveDateData();
+            closeConfirmClearModal();
+            renderAll();
+            showToast('Dados do dia limpos!');
+        }
+
+        /* ============================================================
+           UTILITÁRIOS FINAIS
+        ============================================================ */
+        function formatDateBR(isoDate) {
+            if (!isoDate) return '';
+            const [y, m, d] = isoDate.split('-');
+            return `${d}/${m}/${y}`;
+        }
+        function escapeHTML(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        let toastTimeout;
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').textContent = msg;
+            toast.classList.remove('hidden');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => toast.classList.add('hidden'), 2600);
+        }
+    </script>
+</body>
+</html>
